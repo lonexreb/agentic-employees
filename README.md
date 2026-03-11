@@ -23,11 +23,19 @@ A system where **managers manage agentic employees** that learn from feedback â€
 
 ## Getting Started
 
-> Phase 1 (current): Project scaffolding and documentation. Implementation coming in Phase 2.
-
 ```bash
-# Prerequisites: Python 3.11+, NATS server
-pip install -e .  # (coming soon)
+# Prerequisites: Python 3.10+, NATS server
+pip install -e ".[dev]"
+
+# Run type tests (no NATS needed)
+pytest tests/events/test_types.py -v
+
+# Run full integration tests (requires nats-server running)
+nats-server &
+pytest tests/ -v
+
+# Run demo loop
+python -m src
 ```
 
 ## Documentation

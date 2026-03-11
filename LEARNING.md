@@ -20,6 +20,7 @@ When an autonomous decision turns out wrong or suboptimal, log it here with root
 
 | Date | Context | Mistake | Root Cause | Lesson | Prevention |
 |------|---------|---------|------------|--------|------------|
+| 2026-03-09 | Phase 2 pyproject.toml | Set `requires-python = ">=3.11"` but dev machine runs Python 3.10.0 | Copied from plan without checking local Python version | Always check `python3 --version` before setting requires-python | Run `python3 --version` before writing pyproject.toml |
 
 ## Tool Usage
 

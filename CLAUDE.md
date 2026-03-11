@@ -12,30 +12,48 @@ Event-Driven Architecture (EDA):
 
 ## Language
 
-**Python only.** All components — RL training, agent logic, NATS clients, PRM evaluator — are Python.
+**Python only.** Requires Python >= 3.10. All components — RL training, agent logic, NATS clients, PRM evaluator — are Python.
 
-## Key Dependencies
+## Current Dependencies (pyproject.toml)
+
+- [nats-py](https://github.com/nats-io/nats.py) — NATS client for event bus
+- [pydantic](https://docs.pydantic.dev/) — event type serialization (v2)
+
+Dev: pytest, pytest-asyncio, ruff
+
+## Planned Dependencies (future phases)
 
 - [OpenClaw](https://github.com/openclaw/openclaw) — control plane (identity, memory, channels)
 - [OpenClaw-RL](https://github.com/Gen-Verse/OpenClaw-RL) — continuous learning from feedback (async GRPO)
 - [OpenRLHF](https://github.com/OpenRLHF/OpenRLHF) — heavy RL training (PPO/GRPO/DAPO/REINFORCE++)
 - [PicoClaw](https://github.com/sipeed/picoclaw) — future edge deployment (<10MB RAM)
 - [M³HF](https://github.com/cooperativex/M3HF) — multi-phase feedback from mixed-quality humans
-- [nats-py](https://github.com/nats-io/nats.py) — NATS client for Python
 - Ray, vLLM, DeepSpeed — distributed compute and inference
 
 ## Directory Structure
 
 ```
 src/
-├── manager/    # Manager agent logic (task routing, evaluation, feedback)
-├── workers/    # Worker agent implementations
-├── events/     # NATS event bus, topic definitions, serialization
-├── training/   # RL training loops (GRPO, DAPO, OpenRLHF integration)
-└── rewards/    # PRM evaluator, reward functions, scoring
+├── __main__.py    # Demo entry point (python -m src)
+├── config.py      # Frozen dataclass with env var defaults
+├── manager/
+│   └── manager.py # Manager agent (assign tasks, wait for results, publish feedback)
+├── workers/
+│   ├── base.py         # BaseWorker ABC (subscribe, handle, process pattern)
+│   └── echo_worker.py  # EchoWorker — echoes prompt back with PRM steps
+├── events/
+│   ├── types.py   # Pydantic v2 event models (TaskEvent, ResultEvent, FeedbackEvent, etc.)
+│   ├── topics.py  # Topic constants and helpers
+│   └── bus.py     # EventBus wrapping nats-py (connect, publish, subscribe, drain)
+├── training/      # RL training loops (future — GRPO, DAPO, OpenRLHF integration)
+└── rewards/       # PRM evaluator, reward functions, scoring (future)
 config/
-└── openclaw/   # SOUL.md, IDENTITY.md templates per agent
-tests/          # Mirrors src/ structure
+└── openclaw/      # SOUL.md, IDENTITY.md templates per agent (future)
+tests/
+├── events/
+│   ├── test_types.py  # Serialization roundtrip tests (standalone)
+│   └── test_bus.py    # EventBus pub/sub tests (requires NATS)
+└── test_integration.py # Full manager→worker→feedback loop (requires NATS)
 docs/
 └── architecture/  # Diagrams and ADRs
 ```
@@ -49,9 +67,12 @@ docs/
 
 ## Testing
 
-- Framework: pytest
-- `tests/` mirrors `src/` structure (e.g., `tests/manager/` tests `src/manager/`)
-- Run: `pytest tests/`
+- Framework: pytest + pytest-asyncio (asyncio_mode = "auto")
+- `tests/` mirrors `src/` structure (e.g., `tests/events/` tests `src/events/`)
+- `tests/events/test_types.py` — standalone (no NATS)
+- `tests/events/test_bus.py` and `tests/test_integration.py` — require `nats-server` running
+- Run standalone: `pytest tests/events/test_types.py -v`
+- Run all: `pytest tests/ -v` (with NATS running)
 
 ## Commit Format
 
