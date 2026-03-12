@@ -18,6 +18,7 @@ Event-Driven Architecture (EDA):
 
 - [nats-py](https://github.com/nats-io/nats.py) — NATS client for event bus
 - [pydantic](https://docs.pydantic.dev/) — event type serialization (v2)
+- [ollama](https://github.com/ollama/ollama-python) — LLM inference via Ollama (async client)
 
 Dev: pytest, pytest-asyncio, ruff
 
@@ -34,26 +35,36 @@ Dev: pytest, pytest-asyncio, ruff
 
 ```
 src/
-├── __main__.py    # Demo entry point (python -m src)
-├── config.py      # Frozen dataclass with env var defaults
+├── __main__.py    # Demo entry point (python -m src) — auto-detects Ollama, falls back to EchoWorker
+├── config.py      # Frozen dataclass with env var defaults (NATS, Ollama, timeouts)
 ├── manager/
 │   └── manager.py # Manager agent (assign tasks, wait for results, publish feedback)
 ├── workers/
 │   ├── base.py         # BaseWorker ABC (subscribe, handle, process pattern)
-│   └── echo_worker.py  # EchoWorker — echoes prompt back with PRM steps
+│   ├── echo_worker.py  # EchoWorker — echoes prompt back with PRM steps (testing)
+│   └── llm_worker.py   # LLMWorker — real LLM inference via Ollama with step parsing
 ├── events/
 │   ├── types.py   # Pydantic v2 event models (TaskEvent, ResultEvent, FeedbackEvent, etc.)
 │   ├── topics.py  # Topic constants and helpers
 │   └── bus.py     # EventBus wrapping nats-py (connect, publish, subscribe, drain)
-├── training/      # RL training loops (future — GRPO, DAPO, OpenRLHF integration)
-└── rewards/       # PRM evaluator, reward functions, scoring (future)
+├── rewards/
+│   ├── scorer.py        # StepScorer protocol + LLMJudgeScorer (LLM-as-judge PRM)
+│   ├── prompts.py       # STEP_JUDGE_PROMPT template for step-level evaluation
+│   └── prm_evaluator.py # PRMEvaluator — subscribes to results, scores steps, publishes rollouts
+├── training/
+│   └── bridge.py        # RolloutBuffer + NATSTrainingBridge (batch rollouts for RL trainer)
 config/
 └── openclaw/      # SOUL.md, IDENTITY.md templates per agent (future)
 tests/
 ├── events/
 │   ├── test_types.py  # Serialization roundtrip tests (standalone)
 │   └── test_bus.py    # EventBus pub/sub tests (requires NATS)
-└── test_integration.py # Full manager→worker→feedback loop (requires NATS)
+├── rewards/
+│   ├── test_scorer.py        # LLMJudgeScorer tests (mocked Ollama)
+│   └── test_prm_evaluator.py # PRMEvaluator tests (mocked scorer)
+├── training/
+│   └── test_bridge.py        # RolloutBuffer unit tests
+└── test_integration.py # Full manager→worker→PRM→rollout loop (requires NATS)
 docs/
 └── architecture/  # Diagrams and ADRs
 ```
@@ -69,9 +80,10 @@ docs/
 
 - Framework: pytest + pytest-asyncio (asyncio_mode = "auto")
 - `tests/` mirrors `src/` structure (e.g., `tests/events/` tests `src/events/`)
-- `tests/events/test_types.py` — standalone (no NATS)
-- `tests/events/test_bus.py` and `tests/test_integration.py` — require `nats-server` running
-- Run standalone: `pytest tests/events/test_types.py -v`
+- Standalone (no NATS/Ollama): `tests/events/test_types.py`, `tests/rewards/`, `tests/training/`
+- Requires NATS: `tests/events/test_bus.py`, `tests/test_integration.py`
+- Mock strategy: scorer/evaluator tests mock Ollama client; integration tests use EchoWorker + mock scorer
+- Run standalone: `pytest tests/events/test_types.py tests/rewards/ tests/training/ -v`
 - Run all: `pytest tests/ -v` (with NATS running)
 
 ## Commit Format

@@ -219,7 +219,8 @@ Phase 3: Enterprise (Kubernetes)
 
 - **Phase 1** (DONE): Scaffolding, docs, git, GitHub
 - **Phase 2** (DONE): Event loop — manager publishes task, worker echoes, manager scores
-- **Phase 3** (THIS): Replace echo worker with real LLM, add PRM scoring, bridge to RL training
+- **Phase 3** (DONE): LLM workers (Ollama), PRM scoring (LLM-as-judge), training bridge (rollout buffer + JSONL)
+- **Phase 4** (NEXT): Connect RL trainer (OpenRLHF GRPO), weight hot-swap, trained PRM model
 
 ### Design Issue: ResultEvent Missing Prompt
 
