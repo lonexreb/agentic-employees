@@ -27,12 +27,14 @@ class BaseWorker(ABC):
         t0 = time.monotonic()
         try:
             result = await self.process(task)
+            result.prompt = task.prompt
             result.elapsed_seconds = time.monotonic() - t0
         except Exception as exc:
             logger.exception("Worker %s failed task %s", self.worker_id, task.task_id)
             result = ResultEvent(
                 task_id=task.task_id,
                 worker_id=self.worker_id,
+                prompt=task.prompt,
                 result=str(exc),
                 status=TaskStatus.FAILED,
                 elapsed_seconds=time.monotonic() - t0,

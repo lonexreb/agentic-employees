@@ -23,6 +23,7 @@ def test_result_event_roundtrip():
     event = ResultEvent(
         task_id="abc-123",
         worker_id="w-1",
+        prompt="Write hello world",
         result="done",
         status=TaskStatus.SUCCESS,
         steps=["step1", "step2"],
@@ -31,8 +32,19 @@ def test_result_event_roundtrip():
     data = event.model_dump_json()
     restored = ResultEvent.model_validate_json(data)
     assert restored.status == TaskStatus.SUCCESS
+    assert restored.prompt == "Write hello world"
     assert restored.steps == ["step1", "step2"]
     assert restored.elapsed_seconds == 1.5
+
+
+def test_result_event_prompt_defaults_empty():
+    event = ResultEvent(
+        task_id="abc-123",
+        worker_id="w-1",
+        result="done",
+        status=TaskStatus.SUCCESS,
+    )
+    assert event.prompt == ""
 
 
 def test_feedback_event_roundtrip():

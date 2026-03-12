@@ -32,6 +32,7 @@ class TaskEvent(BaseModel):
 class ResultEvent(BaseModel):
     task_id: str
     worker_id: str
+    prompt: str = ""
     result: str
     status: TaskStatus
     steps: list[str] = Field(default_factory=list)

@@ -6,6 +6,7 @@ requires-python = ">=3.10"
 dependencies = [
     "nats-py>=2.9.0",
     "pydantic>=2.0",
+    "ollama>=0.4",
 ]
 
 [project.optional-dependencies]

@@ -5,8 +5,11 @@ import logging
 
 from src.config import Config
 from src.events.bus import EventBus
+from src.events.topics import TRAINING_ROLLOUTS
+from src.events.types import TrainingRolloutEvent
 from src.manager.manager import Manager
-from src.workers.echo_worker import EchoWorker
+
+logger = logging.getLogger(__name__)
 
 
 async def main() -> None:
@@ -16,9 +19,52 @@ async def main() -> None:
     bus = EventBus()
     await bus.connect(cfg.nats_url)
 
-    manager = Manager(cfg.manager_id, bus)
-    worker = EchoWorker(cfg.worker_id, bus)
+    # Try LLMWorker if ollama is available, else fall back to EchoWorker
+    try:
+        from src.workers.llm_worker import LLMWorker
 
+        import ollama  # noqa: F401
+
+        worker = LLMWorker(
+            cfg.worker_id,
+            bus,
+            model=cfg.llm_model,
+            ollama_host=cfg.ollama_host,
+        )
+        print(f"Using LLMWorker with model={cfg.llm_model}")
+    except (ImportError, Exception) as exc:
+        logger.info("Ollama not available (%s), falling back to EchoWorker", exc)
+        from src.workers.echo_worker import EchoWorker
+
+        worker = EchoWorker(cfg.worker_id, bus)
+        print("Using EchoWorker (fallback)")
+
+    # Set up PRM evaluator
+    try:
+        from src.rewards.scorer import LLMJudgeScorer
+        from src.rewards.prm_evaluator import PRMEvaluator
+
+        scorer = LLMJudgeScorer(
+            model=cfg.llm_model, ollama_host=cfg.ollama_host
+        )
+        evaluator = PRMEvaluator(bus, scorer)
+        await evaluator.start(["coding"])
+        print("PRMEvaluator started")
+    except (ImportError, Exception) as exc:
+        logger.info("Could not start PRMEvaluator: %s", exc)
+        evaluator = None
+
+    # Capture rollouts for display
+    rollout_event = asyncio.Event()
+    captured_rollout: list[TrainingRolloutEvent] = []
+
+    async def _on_rollout(rollout: TrainingRolloutEvent) -> None:
+        captured_rollout.append(rollout)
+        rollout_event.set()
+
+    await bus.subscribe(TRAINING_ROLLOUTS, TrainingRolloutEvent, _on_rollout)
+
+    manager = Manager(cfg.manager_id, bus)
     await manager.start()
     await worker.start()
 
@@ -27,14 +73,28 @@ async def main() -> None:
     print(f"Task ID: {task.task_id}")
 
     result = await manager.wait_for_result(task.task_id, timeout=cfg.task_timeout_seconds)
-    print(f"\n--- Result ---")
+    print("\n--- Result ---")
     print(f"Status: {result.status.value}")
-    print(f"Result: {result.result}")
+    print(f"Result: {result.result[:200]}")
     print(f"Steps:  {result.steps}")
     print(f"Time:   {result.elapsed_seconds:.4f}s")
 
-    await manager.publish_feedback(result, score=0.95, text="Echo worker performed correctly")
-    print(f"\n--- Feedback published (score=0.95) ---")
+    # Wait briefly for PRM scoring
+    if evaluator:
+        try:
+            await asyncio.wait_for(rollout_event.wait(), timeout=30.0)
+            rollout = captured_rollout[0]
+            print("\n--- PRM Scores ---")
+            for i, (step, score) in enumerate(
+                zip(rollout.steps, rollout.step_scores), 1
+            ):
+                print(f"  Step {i}: {score:.3f} — {step[:80]}")
+            print(f"  Outcome: {rollout.outcome_score:.3f}")
+        except asyncio.TimeoutError:
+            print("\n--- PRM scoring timed out ---")
+
+    await manager.publish_feedback(result, score=0.95, text="Task completed")
+    print("\n--- Feedback published (score=0.95) ---")
 
     await bus.close()
 

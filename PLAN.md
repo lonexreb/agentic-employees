@@ -213,6 +213,232 @@ Phase 3: Enterprise (Kubernetes)
 
 ---
 
+## Part 6: Phase 3 — LLM Workers, PRM Scoring & Training Bridge
+
+### Status
+
+- **Phase 1** (DONE): Scaffolding, docs, git, GitHub
+- **Phase 2** (DONE): Event loop — manager publishes task, worker echoes, manager scores
+- **Phase 3** (THIS): Replace echo worker with real LLM, add PRM scoring, bridge to RL training
+
+### Design Issue: ResultEvent Missing Prompt
+
+The PRM evaluator needs the original prompt to score steps in context. `ResultEvent` doesn't carry it. **Fix: add `prompt` field to `ResultEvent`** — small duplication but keeps the evaluator stateless (no need to track/cache TaskEvents).
+
+---
+
+### 3A: LLM Worker (Ollama for Prototype)
+
+**Decision: Ollama + AsyncClient** for prototype. Runs on CPU, async-native, zero config.
+
+| Option | Throughput | GPU Required | Async | Best For |
+|--------|-----------|-------------|-------|----------|
+| Ollama + AsyncClient | ~5 req/s (CPU) | No | Native | Prototype |
+| vLLM + AsyncLLMEngine | ~50-200 req/s | Yes | Native | Production |
+| llama-cpp-python | ~3-10 req/s | No | Wrap in thread | Minimal deps |
+| OpenAI-compatible API | Varies | No | Via openai SDK | Cloud fallback |
+
+**Graduation path:** Ollama → vLLM + LoRA (when GPU available) → vLLM + Ray + tensor parallel (multi-GPU)
+
+**Structured output for PRM:** Use step markers in system prompt (`<step>...</step>`, `<answer>...</answer>`). Parse with regex. Graduate to Pydantic schema-constrained generation (Ollama `format=` param) when reliability matters.
+
+**Step marker system prompt:**
+```
+You are a precise problem solver. Break your reasoning into clear numbered steps.
+Format your response exactly as:
+<step>1. [Your first reasoning step]</step>
+<step>2. [Your second reasoning step]</step>
+...
+<answer>[Your final answer]</answer>
+```
+
+**Key insight:** The `BaseWorker` abstraction already supports drop-in replacement. `LLMWorker` extends `BaseWorker` exactly like `EchoWorker`, just with real LLM calls in `process()`.
+
+---
+
+### 3B: PRM Evaluator (LLM-as-Judge First)
+
+**Decision: Start with LLM-as-judge**, accumulate data, train dedicated PRM later.
+
+| Phase | Scorer | Latency/Step | Training Data Needed | Hardware |
+|-------|--------|-------------|---------------------|----------|
+| **Now** | LLM-as-judge (GPT-4o-mini or local 1.5B) | 200-500ms | None | CPU or API |
+| **>10K trajectories** | Trained PRM (Qwen2.5-1.5B + classification head) | 50-100ms | 10K+ scored trajectories | 1x GPU |
+| **Production** | Batched PRM via vLLM | 10-30ms amortized | 50K+ | 1x A100 |
+
+**Graduation trigger:** When LLM-as-judge latency bottlenecks training throughput, or when you need calibrated/consistent scores. The judge's own scores become PRM training labels — bootstrap from judge to trained model.
+
+**Architecture in event bus:**
+```
+results.* ──► PRMEvaluator ──► training.rollouts
+                  │
+                  ├── Subscribes to: results.{task_type}
+                  ├── Receives: ResultEvent (with steps + prompt)
+                  ├── Scores each step via StepScorer protocol
+                  └── Publishes: TrainingRolloutEvent (with step_scores)
+```
+
+**StepScorer protocol** — two implementations behind same interface:
+1. `LLMJudgeScorer`: calls an LLM to score each step on progress + correctness (0-1)
+2. `TrainedPRMScorer` (future): runs a trained PRM model for fast inference
+
+**Step scoring prompt pattern:**
+```
+Rate step {n} of an agent solving a task.
+TASK: {prompt}
+STEPS SO FAR: {steps[:n]}
+CURRENT STEP: {steps[n]}
+Rate PROGRESS (0-1) and CORRECTNESS (0-1). Respond with JSON only.
+```
+
+**What constitutes a "step" in agent context:**
+
+| Agent Action | Step Boundary | Score Meaning |
+|-------------|--------------|---------------|
+| Tool call | Invocation + result | "Did this advance toward the goal?" |
+| Reasoning block | Each CoT segment | "Is this reasoning sound?" |
+| Code generation | Each code block | "Does this move toward correctness?" |
+
+---
+
+### 3C: Training Bridge (NATS → OpenRLHF/OpenClaw-RL)
+
+**Decision: Use both frameworks** for different purposes.
+
+| Role | Framework | When |
+|------|-----------|------|
+| Continuous learning (live feedback loop) | **OpenClaw-RL** | Every scored rollout |
+| Heavy retraining (new model version) | **OpenRLHF** | Periodic batch runs |
+
+**Critical finding: OpenRLHF's GRPO is batch-synchronous.** It cannot consume rollouts one-at-a-time. Need a `RolloutBuffer` adapter:
+
+```
+NATS (training.rollouts)
+    │ scored rollouts arrive async
+    ▼
+RolloutBuffer
+    │ buffers until batch_size * group_size ready
+    ▼
+NATSTrainingBridge
+    │ feeds batch to trainer
+    ▼
+GRPOTrainer (OpenRLHF)
+    │ gradient step
+    ▼
+model.updates topic (LoRA checkpoint path)
+```
+
+**GRPO data requirements per batch:**
+- Each prompt needs `group_size` (4-8) responses with rewards
+- Advantage = `(reward_i - mean) / std` within the group
+- Minimum batch: 8-64 prompts × 4-8 responses each = 32-512 scored rollouts
+
+**Resource requirements for 7B GRPO:**
+
+| Config | GPUs | VRAM | Feasible? |
+|--------|------|------|-----------|
+| Full fine-tune, ZeRO-3, group=8 | 4x A100 | 320GB | Yes |
+| LoRA (rank 64), ZeRO-2, group=4 | 1x A100 | 80GB | Yes |
+| QLoRA, group=2 | 1x RTX 4090 | 24GB | Tight but works |
+
+**Prototype recommendation:** Use 3B model (Phi-3-mini or Qwen2.5-3B) with LoRA on single GPU. Graduate to 7B on cloud GPUs.
+
+**Weight hot-swap strategy: LoRA adapters**
+- Base model stays loaded (never changes)
+- LoRA adapters are tiny (~10-50MB)
+- vLLM supports loading new LoRA at runtime without restart
+- Workers subscribe to `model.updates`, pull new adapter, switch
+- Filesystem convention: `/models/adapters/v001/`, `/models/adapters/v002/`, `current -> v002`
+
+---
+
+### 3D: Build Order
+
+#### Step 1: Fix ResultEvent (add prompt field)
+- Add `prompt: str = ""` to `ResultEvent` in `src/events/types.py`
+- Update `BaseWorker._handle_task()` to populate it from `task.prompt`
+- Update tests
+
+#### Step 2: LLMWorker (`src/workers/llm_worker.py`)
+- New dep: `ollama>=0.4` in `pyproject.toml`
+- `LLMWorker(BaseWorker)`: uses `ollama.AsyncClient` in `process()`
+- System prompt with step markers, regex parsing into `steps` list
+- Config: add `llm_model`, `ollama_host` to `Config` dataclass
+
+#### Step 3: StepScorer protocol + LLMJudgeScorer (`src/rewards/scorer.py`)
+- `StepScorer` protocol: `async score_steps(prompt, steps) -> list[float]`
+- `LLMJudgeScorer`: calls LLM with step-judge prompt, returns progress×correctness scores
+- `src/rewards/prompts.py`: judge prompt templates
+
+#### Step 4: PRMEvaluator (`src/rewards/prm_evaluator.py`)
+- Subscribes to `results.*`, scores steps via `StepScorer`
+- Publishes `TrainingRolloutEvent` to `training.rollouts`
+- Stateless — relies on prompt being in `ResultEvent`
+
+#### Step 5: Re-export in `src/rewards/__init__.py`
+
+#### Step 6: RolloutBuffer + NATSTrainingBridge (`src/training/bridge.py`)
+- `RolloutBuffer`: buffers scored rollouts, emits batches when ready
+- `NATSTrainingBridge`: subscribes to `training.rollouts`, feeds batches to trainer
+- Trainer interface is abstract — plug in OpenRLHF or OpenClaw-RL later
+
+#### Step 7: Tests
+- `tests/rewards/test_scorer.py` — mock LLM judge, verify scoring
+- `tests/rewards/test_prm_evaluator.py` — mock scorer, verify event flow
+- `tests/training/test_bridge.py` — buffer fill + batch emission
+- `tests/test_integration.py` — extend full loop: task → LLM result → PRM score → rollout
+
+#### Step 8: Update `__main__.py`
+- Add LLMWorker option (fallback to EchoWorker if Ollama unavailable)
+- Add PRMEvaluator to the demo loop
+- Print step scores alongside results
+
+### 3E: Files Summary
+
+| Action | Path |
+|--------|------|
+| MODIFY | `pyproject.toml` (add `ollama>=0.4`) |
+| MODIFY | `src/config.py` (add `llm_model`, `ollama_host`) |
+| MODIFY | `src/events/types.py` (add `prompt` to `ResultEvent`) |
+| MODIFY | `src/workers/base.py` (populate `result.prompt`) |
+| CREATE | `src/workers/llm_worker.py` |
+| CREATE | `src/rewards/scorer.py` |
+| CREATE | `src/rewards/prompts.py` |
+| CREATE | `src/rewards/prm_evaluator.py` |
+| MODIFY | `src/rewards/__init__.py` (add re-exports) |
+| CREATE | `src/training/bridge.py` |
+| MODIFY | `src/training/__init__.py` (add re-exports) |
+| CREATE | `tests/rewards/__init__.py` |
+| CREATE | `tests/rewards/test_scorer.py` |
+| CREATE | `tests/rewards/test_prm_evaluator.py` |
+| CREATE | `tests/training/__init__.py` |
+| CREATE | `tests/training/test_bridge.py` |
+| MODIFY | `tests/test_integration.py` (extend for PRM) |
+| MODIFY | `src/__main__.py` (add LLMWorker + PRM) |
+
+**10 new files, 8 modified.**
+
+### 3F: Commit Sequence
+
+1. `feat: add prompt field to ResultEvent for PRM context`
+2. `feat: add LLM worker with Ollama backend`
+3. `feat: add PRM evaluator with LLM-as-judge scorer`
+4. `feat: add training bridge with rollout buffer`
+5. `test: add reward, training, and extended integration tests`
+6. `feat: update demo entry point with LLM worker and PRM`
+
+### 3G: Verification
+
+1. `pip install -e ".[dev]"` — installs with ollama dep
+2. `ollama serve & ollama pull qwen2.5:1.5b` — model ready
+3. `pytest tests/rewards/ -v` — scorer + evaluator tests pass (mocked, no NATS)
+4. `pytest tests/training/test_bridge.py -v` — buffer tests pass (no NATS)
+5. With NATS + Ollama running:
+   - `pytest tests/test_integration.py -v` — full loop with PRM scoring
+   - `python -m src` — prints task → LLM response with steps → step scores → feedback
+
+---
+
 ## Sources
 
 - [OpenClaw GitHub](https://github.com/openclaw/openclaw)
