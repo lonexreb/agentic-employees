@@ -1,0 +1,209 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 320" width="1280" height="320">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0d1117"/>
+      <stop offset="100%" style="stop-color:#161b22"/>
+    </linearGradient>
+    <linearGradient id="purpleGlow" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#8b5cf6"/>
+      <stop offset="100%" style="stop-color:#a78bfa"/>
+    </linearGradient>
+    <linearGradient id="tealGlow" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#14b8a6"/>
+      <stop offset="100%" style="stop-color:#2dd4bf"/>
+    </linearGradient>
+    <linearGradient id="purpleTeal" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#8b5cf6"/>
+      <stop offset="100%" style="stop-color:#14b8a6"/>
+    </linearGradient>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <filter id="softGlow">
+      <feGaussianBlur stdDeviation="6" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <filter id="nodeGlow">
+      <feGaussianBlur stdDeviation="4" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1280" height="320" fill="url(#bgGrad)"/>
+
+  <!-- Subtle grid pattern -->
+  <g opacity="0.04" stroke="#ffffff" stroke-width="0.5">
+    <line x1="0" y1="40" x2="1280" y2="40"/>
+    <line x1="0" y1="80" x2="1280" y2="80"/>
+    <line x1="0" y1="120" x2="1280" y2="120"/>
+    <line x1="0" y1="160" x2="1280" y2="160"/>
+    <line x1="0" y1="200" x2="1280" y2="200"/>
+    <line x1="0" y1="240" x2="1280" y2="240"/>
+    <line x1="0" y1="280" x2="1280" y2="280"/>
+    <line x1="160" y1="0" x2="160" y2="320"/>
+    <line x1="320" y1="0" x2="320" y2="320"/>
+    <line x1="480" y1="0" x2="480" y2="320"/>
+    <line x1="640" y1="0" x2="640" y2="320"/>
+    <line x1="800" y1="0" x2="800" y2="320"/>
+    <line x1="960" y1="0" x2="960" y2="320"/>
+    <line x1="1120" y1="0" x2="1120" y2="320"/>
+  </g>
+
+  <!-- Neural network background nodes (decorative) -->
+  <g opacity="0.08">
+    <!-- Left cluster -->
+    <circle cx="80" cy="60" r="2" fill="#8b5cf6"/>
+    <circle cx="120" cy="90" r="1.5" fill="#14b8a6"/>
+    <circle cx="60" cy="130" r="2" fill="#8b5cf6"/>
+    <circle cx="140" cy="150" r="1.5" fill="#14b8a6"/>
+    <circle cx="90" cy="200" r="2" fill="#8b5cf6"/>
+    <circle cx="50" cy="250" r="1.5" fill="#14b8a6"/>
+    <circle cx="130" cy="270" r="2" fill="#8b5cf6"/>
+    <line x1="80" y1="60" x2="120" y2="90" stroke="#8b5cf6" stroke-width="0.5"/>
+    <line x1="120" y1="90" x2="60" y2="130" stroke="#14b8a6" stroke-width="0.5"/>
+    <line x1="60" y1="130" x2="140" y2="150" stroke="#8b5cf6" stroke-width="0.5"/>
+    <line x1="140" y1="150" x2="90" y2="200" stroke="#14b8a6" stroke-width="0.5"/>
+    <line x1="90" y1="200" x2="50" y2="250" stroke="#8b5cf6" stroke-width="0.5"/>
+    <line x1="50" y1="250" x2="130" y2="270" stroke="#14b8a6" stroke-width="0.5"/>
+    <!-- Right cluster -->
+    <circle cx="1150" cy="50" r="2" fill="#14b8a6"/>
+    <circle cx="1200" cy="100" r="1.5" fill="#8b5cf6"/>
+    <circle cx="1170" cy="160" r="2" fill="#14b8a6"/>
+    <circle cx="1220" cy="210" r="1.5" fill="#8b5cf6"/>
+    <circle cx="1160" cy="260" r="2" fill="#14b8a6"/>
+    <line x1="1150" y1="50" x2="1200" y2="100" stroke="#14b8a6" stroke-width="0.5"/>
+    <line x1="1200" y1="100" x2="1170" y2="160" stroke="#8b5cf6" stroke-width="0.5"/>
+    <line x1="1170" y1="160" x2="1220" y2="210" stroke="#14b8a6" stroke-width="0.5"/>
+    <line x1="1220" y1="210" x2="1160" y2="260" stroke="#8b5cf6" stroke-width="0.5"/>
+  </g>
+
+  <!-- Event stream lines (decorative pub/sub) -->
+  <g filter="url(#softGlow)" opacity="0.15">
+    <path d="M 0,280 Q 200,260 400,270 Q 600,280 800,265 Q 1000,250 1280,260" stroke="#8b5cf6" stroke-width="1" fill="none"/>
+    <path d="M 0,50 Q 300,40 500,55 Q 700,70 900,45 Q 1100,30 1280,50" stroke="#14b8a6" stroke-width="1" fill="none"/>
+  </g>
+
+  <!-- ===== CYCLE DIAGRAM ===== -->
+
+  <!-- Cycle: Task (left) -> Solve -> Score -> Train -> Improve (back to Task) -->
+  <!-- Positions: arranged in a rounded rectangle loop -->
+  <!-- Task:340,160  Solve:540,160  Score:740,160  Train:840,240  Improve:640,240 -->
+
+  <!-- Connection arrows (behind nodes) -->
+  <g filter="url(#glow)">
+    <!-- Task -> Solve -->
+    <line x1="385" y1="160" x2="495" y2="160" stroke="#8b5cf6" stroke-width="2" opacity="0.7"/>
+    <polygon points="495,155 505,160 495,165" fill="#8b5cf6" opacity="0.7"/>
+
+    <!-- Solve -> Score -->
+    <line x1="585" y1="160" x2="695" y2="160" stroke="#a78bfa" stroke-width="2" opacity="0.7"/>
+    <polygon points="695,155 705,160 695,165" fill="#a78bfa" opacity="0.7"/>
+
+    <!-- Score -> Train (curve down-right) -->
+    <path d="M 785,170 Q 820,210 840,225" stroke="#14b8a6" stroke-width="2" fill="none" opacity="0.7"/>
+    <polygon points="835,220 843,230 845,218" fill="#14b8a6" opacity="0.7"/>
+
+    <!-- Train -> Improve -->
+    <line x1="805" y1="240" x2="700" y2="240" stroke="#2dd4bf" stroke-width="2" opacity="0.7"/>
+    <polygon points="700,235 690,240 700,245" fill="#2dd4bf" opacity="0.7"/>
+
+    <!-- Improve -> Task (curve up-left) -->
+    <path d="M 610,230 Q 460,200 370,175" stroke="#8b5cf6" stroke-width="2" fill="none" opacity="0.7"/>
+    <polygon points="375,170 365,173 372,182" fill="#8b5cf6" opacity="0.7"/>
+  </g>
+
+  <!-- TASK node -->
+  <g filter="url(#nodeGlow)">
+    <rect x="300" y="140" width="80" height="40" rx="8" fill="#0d1117" stroke="#8b5cf6" stroke-width="1.5"/>
+    <text x="340" y="165" text-anchor="middle" fill="#8b5cf6" font-family="system-ui, -apple-system, sans-serif" font-size="13" font-weight="600">Task</text>
+  </g>
+
+  <!-- SOLVE node -->
+  <g filter="url(#nodeGlow)">
+    <rect x="500" y="140" width="80" height="40" rx="8" fill="#0d1117" stroke="#a78bfa" stroke-width="1.5"/>
+    <text x="540" y="165" text-anchor="middle" fill="#a78bfa" font-family="system-ui, -apple-system, sans-serif" font-size="13" font-weight="600">Solve</text>
+  </g>
+
+  <!-- SCORE node -->
+  <g filter="url(#nodeGlow)">
+    <rect x="700" y="140" width="80" height="40" rx="8" fill="#0d1117" stroke="#14b8a6" stroke-width="1.5"/>
+    <text x="740" y="165" text-anchor="middle" fill="#14b8a6" font-family="system-ui, -apple-system, sans-serif" font-size="13" font-weight="600">Score</text>
+  </g>
+
+  <!-- TRAIN node -->
+  <g filter="url(#nodeGlow)">
+    <rect x="800" y="220" width="80" height="40" rx="8" fill="#0d1117" stroke="#2dd4bf" stroke-width="1.5"/>
+    <text x="840" y="245" text-anchor="middle" fill="#2dd4bf" font-family="system-ui, -apple-system, sans-serif" font-size="13" font-weight="600">Train</text>
+  </g>
+
+  <!-- IMPROVE node -->
+  <g filter="url(#nodeGlow)">
+    <rect x="610" y="220" width="90" height="40" rx="8" fill="#0d1117" stroke="#8b5cf6" stroke-width="1.5"/>
+    <text x="655" y="245" text-anchor="middle" fill="#8b5cf6" font-family="system-ui, -apple-system, sans-serif" font-size="13" font-weight="600">Improve</text>
+  </g>
+
+  <!-- ===== AGENT ICONS ===== -->
+
+  <!-- Manager Agent (left side) -->
+  <g transform="translate(200, 130)" filter="url(#nodeGlow)">
+    <!-- Agent body -->
+    <circle cx="0" cy="0" r="18" fill="#0d1117" stroke="#8b5cf6" stroke-width="1.5"/>
+    <!-- Head -->
+    <circle cx="0" cy="-4" r="6" fill="none" stroke="#8b5cf6" stroke-width="1.2"/>
+    <!-- Body -->
+    <path d="M -8,8 Q 0,4 8,8" stroke="#8b5cf6" stroke-width="1.2" fill="none"/>
+    <!-- Crown/star (manager indicator) -->
+    <path d="M -5,-14 L -3,-10 L 0,-13 L 3,-10 L 5,-14" stroke="#a78bfa" stroke-width="1" fill="none"/>
+    <text x="0" y="35" text-anchor="middle" fill="#8b5cf6" font-family="system-ui, -apple-system, sans-serif" font-size="10" opacity="0.8">Manager</text>
+  </g>
+
+  <!-- Worker Agent (right side) -->
+  <g transform="translate(960, 190)" filter="url(#nodeGlow)">
+    <!-- Agent body -->
+    <circle cx="0" cy="0" r="18" fill="#0d1117" stroke="#14b8a6" stroke-width="1.5"/>
+    <!-- Head -->
+    <circle cx="0" cy="-4" r="6" fill="none" stroke="#14b8a6" stroke-width="1.2"/>
+    <!-- Body -->
+    <path d="M -8,8 Q 0,4 8,8" stroke="#14b8a6" stroke-width="1.2" fill="none"/>
+    <!-- Gear (worker indicator) -->
+    <circle cx="8" cy="-10" r="3.5" fill="none" stroke="#2dd4bf" stroke-width="0.8"/>
+    <line x1="8" y1="-14.5" x2="8" y2="-5.5" stroke="#2dd4bf" stroke-width="0.6"/>
+    <line x1="4.5" y1="-10" x2="11.5" y2="-10" stroke="#2dd4bf" stroke-width="0.6"/>
+    <text x="0" y="35" text-anchor="middle" fill="#14b8a6" font-family="system-ui, -apple-system, sans-serif" font-size="10" opacity="0.8">Worker</text>
+  </g>
+
+  <!-- Connection: Manager -> Task -->
+  <g filter="url(#glow)" opacity="0.5">
+    <line x1="220" y1="145" x2="298" y2="155" stroke="#8b5cf6" stroke-width="1" stroke-dasharray="4,3"/>
+  </g>
+
+  <!-- Connection: Worker -> Solve/Score area -->
+  <g filter="url(#glow)" opacity="0.5">
+    <line x1="940" y1="195" x2="882" y2="235" stroke="#14b8a6" stroke-width="1" stroke-dasharray="4,3"/>
+  </g>
+
+  <!-- ===== TITLE ===== -->
+  <text x="640" y="68" text-anchor="middle" fill="#e6edf3" font-family="system-ui, -apple-system, sans-serif" font-size="36" font-weight="700" letter-spacing="1">agentic-employees</text>
+
+  <!-- Subtitle -->
+  <text x="640" y="98" text-anchor="middle" fill="#8b949e" font-family="system-ui, -apple-system, sans-serif" font-size="14" font-weight="400">AI agents that learn from manager feedback — continuous improvement through GRPO</text>
+
+  <!-- Decorative line under title -->
+  <line x1="440" y1="110" x2="840" y2="110" stroke="url(#purpleTeal)" stroke-width="1" opacity="0.4"/>
+
+  <!-- NATS label -->
+  <g opacity="0.5">
+    <text x="640" y="295" text-anchor="middle" fill="#8b949e" font-family="system-ui, -apple-system, monospace" font-size="10" letter-spacing="3">EVENT-DRIVEN  ·  NATS PUB/SUB  ·  GRPO + LoRA  ·  PROCESS REWARDS</text>
+  </g>
+</svg>

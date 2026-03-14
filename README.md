@@ -1,4 +1,5 @@
 <div align="center">
+<img src="assets/banner.svg" alt="agentic-employees banner" width="960">
 
 # agentic-employees
 
