@@ -11,6 +11,7 @@ from src.events.types import TaskStatus, TrainingRolloutEvent
 from src.manager.manager import Manager
 from src.rewards.prm_evaluator import PRMEvaluator
 from src.workers.echo_worker import EchoWorker
+from tests.conftest import requires_nats
 
 
 @pytest.fixture
@@ -21,6 +22,7 @@ async def bus():
     await b.close()
 
 
+@requires_nats
 async def test_full_loop(bus: EventBus):
     manager = Manager("test-manager", bus)
     worker = EchoWorker("test-worker", bus)
@@ -41,6 +43,7 @@ async def test_full_loop(bus: EventBus):
     await manager.publish_feedback(result, score=0.9, text="Echoed correctly")
 
 
+@requires_nats
 async def test_full_loop_with_prm(bus: EventBus):
     """Full loop: manager -> echo worker -> PRM evaluator -> training rollout."""
     mock_scorer = AsyncMock()

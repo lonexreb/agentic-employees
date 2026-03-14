@@ -6,6 +6,7 @@ import pytest
 
 from src.events.bus import EventBus
 from src.events.types import TaskEvent
+from tests.conftest import requires_nats
 
 
 @pytest.fixture
@@ -16,6 +17,7 @@ async def bus():
     await b.close()
 
 
+@requires_nats
 async def test_publish_subscribe_roundtrip(bus: EventBus):
     received: list[TaskEvent] = []
     done = asyncio.Event()
@@ -34,6 +36,7 @@ async def test_publish_subscribe_roundtrip(bus: EventBus):
     assert received[0].prompt == "test prompt"
 
 
+@requires_nats
 async def test_multiple_subscribers(bus: EventBus):
     received_a: list[TaskEvent] = []
     received_b: list[TaskEvent] = []

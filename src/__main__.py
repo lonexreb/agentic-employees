@@ -7,6 +7,7 @@ from src.config import Config
 from src.events.bus import EventBus
 from src.events.topics import TRAINING_ROLLOUTS
 from src.events.types import TrainingRolloutEvent
+from src.inference.client import create_client
 from src.manager.manager import Manager
 
 logger = logging.getLogger(__name__)
@@ -19,21 +20,27 @@ async def main() -> None:
     bus = EventBus()
     await bus.connect(cfg.nats_url)
 
-    # Try LLMWorker if ollama is available, else fall back to EchoWorker
+    # Create shared inference client
+    inference_client = create_client(
+        backend=cfg.inference_backend,
+        base_url=cfg.inference_base_url or cfg.ollama_host,
+        api_key=cfg.inference_api_key,
+    )
+    print(f"Using inference backend: {cfg.inference_backend}")
+
+    # Try LLMWorker with InferenceClient, else fall back to EchoWorker
     try:
         from src.workers.llm_worker import LLMWorker
-
-        import ollama  # noqa: F401
 
         worker = LLMWorker(
             cfg.worker_id,
             bus,
             model=cfg.llm_model,
-            ollama_host=cfg.ollama_host,
+            client=inference_client,
         )
         print(f"Using LLMWorker with model={cfg.llm_model}")
     except (ImportError, Exception) as exc:
-        logger.info("Ollama not available (%s), falling back to EchoWorker", exc)
+        logger.info("LLMWorker not available (%s), falling back to EchoWorker", exc)
         from src.workers.echo_worker import EchoWorker
 
         worker = EchoWorker(cfg.worker_id, bus)
@@ -44,9 +51,7 @@ async def main() -> None:
         from src.rewards.scorer import LLMJudgeScorer
         from src.rewards.prm_evaluator import PRMEvaluator
 
-        scorer = LLMJudgeScorer(
-            model=cfg.llm_model, ollama_host=cfg.ollama_host
-        )
+        scorer = LLMJudgeScorer(model=cfg.llm_model, client=inference_client)
         evaluator = PRMEvaluator(bus, scorer)
         await evaluator.start(["coding"])
         print("PRMEvaluator started")
@@ -54,37 +59,62 @@ async def main() -> None:
         logger.info("Could not start PRMEvaluator: %s", exc)
         evaluator = None
 
+    # Optionally set up VLLMLoRAManager for hot-swap
+    vllm_manager = None
+    if cfg.inference_backend == "openai":
+        try:
+            from src.inference.vllm_lora import VLLMLoRAManager
+
+            base = cfg.inference_base_url or "http://localhost:8000"
+            vllm_manager = VLLMLoRAManager(base_url=base)
+            models = await vllm_manager.health_check()
+            print(f"VLLMLoRAManager connected, models: {models}")
+        except Exception as exc:
+            logger.info("VLLMLoRAManager not available: %s", exc)
+            vllm_manager = None
+
     # Set up training loop
-    try:
-        from src.training.trainer import GRPOTrainer
+    trainer = None
+    if cfg.trainer_backend == "openrlhf":
+        from src.training.openrlhf_launcher import OpenRLHFLauncher
 
-        trainer = GRPOTrainer(
+        _openrlhf = OpenRLHFLauncher(  # noqa: F841
             model_name=cfg.training_model,
-            lr=cfg.training_lr,
-            clip_epsilon=cfg.training_clip_epsilon,
-            kl_beta=cfg.training_kl_beta,
-            checkpoint_dir=cfg.training_checkpoint_dir,
-            lora_rank=cfg.training_lora_rank,
-            device=cfg.training_device,
+            output_dir=cfg.training_checkpoint_dir,
         )
-        print(f"Using GRPOTrainer with model={cfg.training_model}")
-    except (ImportError, Exception) as exc:
-        logger.info("torch/transformers/peft not available (%s), using MockTrainer", exc)
-        from src.training.trainer import MockTrainer
+        print("OpenRLHFLauncher configured (will launch on batch)")
+    else:
+        try:
+            from src.training.trainer import GRPOTrainer
 
-        trainer = MockTrainer()
-        print("Using MockTrainer (fallback)")
+            trainer = GRPOTrainer(
+                model_name=cfg.training_model,
+                lr=cfg.training_lr,
+                clip_epsilon=cfg.training_clip_epsilon,
+                kl_beta=cfg.training_kl_beta,
+                checkpoint_dir=cfg.training_checkpoint_dir,
+                lora_rank=cfg.training_lora_rank,
+                device=cfg.training_device,
+            )
+            print(f"Using GRPOTrainer with model={cfg.training_model}")
+        except (ImportError, Exception) as exc:
+            logger.info("torch/transformers/peft not available (%s), using MockTrainer", exc)
+            from src.training.trainer import MockTrainer
 
-    from src.training.bridge import RolloutBuffer
-    from src.training.loop import TrainingLoop
+            trainer = MockTrainer()
+            print("Using MockTrainer (fallback)")
 
-    buffer = RolloutBuffer(
-        batch_size=cfg.training_batch_size,
-        group_size=cfg.training_group_size,
-    )
-    training_loop = TrainingLoop(bus, trainer, buffer)
-    await training_loop.start()
-    print("TrainingLoop started")
+    if trainer is not None:
+        from src.training.bridge import RolloutBuffer
+        from src.training.loop import TrainingLoop
+
+        buffer = RolloutBuffer(
+            batch_size=cfg.training_batch_size,
+            group_size=cfg.training_group_size,
+        )
+        training_loop = TrainingLoop(bus, trainer, buffer)
+        await training_loop.start()
+        print("TrainingLoop started")
 
     # Capture rollouts for display
     rollout_event = asyncio.Event()
@@ -110,6 +140,8 @@ async def main() -> None:
     print(f"Result: {result.result[:200]}")
     print(f"Steps:  {result.steps}")
     print(f"Time:   {result.elapsed_seconds:.4f}s")
+    if result.model_version:
+        print(f"Model:  {result.model_version}")
 
     # Wait briefly for PRM scoring
     if evaluator:
@@ -128,6 +160,8 @@ async def main() -> None:
     await manager.publish_feedback(result, score=0.95, text="Task completed")
     print("\n--- Feedback published (score=0.95) ---")
 
+    if vllm_manager:
+        await vllm_manager.close()
     await bus.close()
 
 

@@ -37,6 +37,29 @@ def test_result_event_roundtrip():
     assert restored.elapsed_seconds == 1.5
 
 
+def test_result_event_model_version_roundtrip():
+    event = ResultEvent(
+        task_id="abc-123",
+        worker_id="w-1",
+        result="done",
+        status=TaskStatus.SUCCESS,
+        model_version="v0005",
+    )
+    data = event.model_dump_json()
+    restored = ResultEvent.model_validate_json(data)
+    assert restored.model_version == "v0005"
+
+
+def test_result_event_model_version_defaults_none():
+    event = ResultEvent(
+        task_id="abc-123",
+        worker_id="w-1",
+        result="done",
+        status=TaskStatus.SUCCESS,
+    )
+    assert event.model_version is None
+
+
 def test_result_event_prompt_defaults_empty():
     event = ResultEvent(
         task_id="abc-123",

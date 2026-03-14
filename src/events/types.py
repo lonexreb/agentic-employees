@@ -37,6 +37,7 @@ class ResultEvent(BaseModel):
     status: TaskStatus
     steps: list[str] = Field(default_factory=list)
     elapsed_seconds: float = 0.0
+    model_version: str | None = None
     created_at: datetime = Field(default_factory=_utcnow)
 
 

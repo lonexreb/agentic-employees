@@ -3,9 +3,8 @@ from __future__ import annotations
 import logging
 import re
 
-import ollama
-
-from src.events.types import ResultEvent, TaskEvent, TaskStatus
+from src.events.types import ModelUpdateEvent, ResultEvent, TaskEvent, TaskStatus
+from src.inference.client import InferenceClient
 from src.workers.base import BaseWorker
 
 logger = logging.getLogger(__name__)
@@ -48,22 +47,22 @@ class LLMWorker(BaseWorker):
         task_types: list[str] | None = None,
         *,
         model: str = "qwen2.5:1.5b",
-        ollama_host: str = "http://localhost:11434",
+        client: InferenceClient,
     ) -> None:
         super().__init__(worker_id, bus, task_types or ["coding"])
         self.model = model
-        self._client = ollama.AsyncClient(host=ollama_host)
+        self._client = client
+        self._active_version: str | None = None
 
     async def process(self, task: TaskEvent) -> ResultEvent:
         logger.info("LLMWorker %s calling model %s", self.worker_id, self.model)
-        response = await self._client.chat(
+        raw_text = await self._client.chat(
             model=self.model,
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": task.prompt},
             ],
         )
-        raw_text = response["message"]["content"]
         steps, answer = _parse_steps(raw_text)
         return ResultEvent(
             task_id=task.task_id,
@@ -71,4 +70,13 @@ class LLMWorker(BaseWorker):
             result=answer,
             status=TaskStatus.SUCCESS,
             steps=steps,
+        )
+
+    async def reload_model(self, event: ModelUpdateEvent) -> None:
+        old_model = self.model
+        self.model = event.model_version
+        self._active_version = event.model_version
+        logger.info(
+            "LLMWorker %s switched model %s -> %s",
+            self.worker_id, old_model, self.model,
         )

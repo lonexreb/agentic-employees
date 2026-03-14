@@ -4,8 +4,7 @@ import json
 import logging
 from typing import Protocol, runtime_checkable
 
-import ollama
-
+from src.inference.client import InferenceClient
 from src.rewards.prompts import STEP_JUDGE_PROMPT
 
 logger = logging.getLogger(__name__)
@@ -23,11 +22,10 @@ class LLMJudgeScorer:
         self,
         *,
         model: str = "qwen2.5:1.5b",
-        client: ollama.AsyncClient | None = None,
-        ollama_host: str = "http://localhost:11434",
+        client: InferenceClient,
     ) -> None:
         self.model = model
-        self._client = client or ollama.AsyncClient(host=ollama_host)
+        self._client = client
 
     async def score_steps(self, prompt: str, steps: list[str]) -> list[float]:
         scores: list[float] = []
@@ -47,12 +45,11 @@ class LLMJudgeScorer:
 
     async def _judge_single_step(self, judge_prompt: str) -> float:
         try:
-            response = await self._client.chat(
+            raw = await self._client.chat(
                 model=self.model,
                 messages=[{"role": "user", "content": judge_prompt}],
-                format="json",
+                json_mode=True,
             )
-            raw = response["message"]["content"]
             parsed = json.loads(raw)
             progress = float(parsed.get("progress", DEFAULT_FALLBACK_SCORE))
             correctness = float(parsed.get("correctness", DEFAULT_FALLBACK_SCORE))
