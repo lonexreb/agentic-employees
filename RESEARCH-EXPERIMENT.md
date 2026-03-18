@@ -490,3 +490,88 @@ Living document tracking experiments, findings, and technical decisions across p
 - Actual teacher logprob extraction (requires vLLM with logprobs enabled)
 - Implicit signal extraction from tool failures / user re-queries
 - Real per-token OPD advantages (current implementation uses response-level proxy)
+
+---
+
+## Phase 8: Adopt + Extend — Architecture Reassessment
+
+**Date:** 2026-03-17
+
+**Scope:** Shift from "build everything from scratch" to "adopt + extend". Adopt battle-tested training infrastructure (OpenRLHF) for the training plane while keeping NATS for the orchestration plane. Add CLI entry point, OpenRLHF backend integration, and OpenClaw-RL OPD mode.
+
+### Key Decision: Two-Layer Architecture
+
+- **Problem:** Phase 7 built custom GRPO math, OPD extraction, and rollout collection. But no major RL training framework (OpenRLHF, veRL, TRL) uses NATS or any message broker for GPU training. They use NCCL for GPU sync, Ray for orchestration, vLLM for rollouts, and DeepSpeed/FSDP for memory-efficient training.
+- **Decision:** Split into two layers:
+  - **Orchestration Layer** (NATS): Agent coordination, task routing, manager feedback, meta-RL — keep, it's correctly placed.
+  - **Training Layer** (OpenRLHF): Production GRPO/DAPO via Ray+vLLM+DeepSpeed — adopt existing.
+- **Validation:** `OpenRLHFBackend` implements the `Trainer` protocol, so `TrainingLoop` doesn't know the difference. Custom `GRPOTrainer` kept for CPU dev/testing. Seamless backend selection via `TRAINER_BACKEND` config var.
+
+### Experiments
+
+#### 8.1 CLI Entry Point (`src/cli.py`)
+
+- **Design:** Typer + Rich CLI with 4 commands: `init`, `train`, `serve`, `status`. `init` creates .env + pulls model. `train` selects backend via `--backend standalone|openrlhf`. `serve` starts via Docker Compose or demo loop. `status` checks NATS, Ollama, Bridge, Intercept Proxy, Docker health.
+- **Finding:** `pyproject.toml` `[project.scripts]` entry point (`agentic-employees = "src.cli:app"`) works cleanly with editable installs. Typer's `--help` auto-generates good docs.
+- **Dependencies:** Added `typer>=0.12` and `rich>=13.0` to core dependencies.
+
+#### 8.2 OpenRLHF Training Backend (`src/training/openrlhf_backend.py`)
+
+- **Design:** Implements `Trainer` protocol. Exports rollouts to JSONL → launches `openrlhf.cli.train_grpo_ray` as subprocess → parses training metrics from stdout → returns `TrainStepResult`. Falls back to simulation mode on CPU (creates checkpoint directories, writes metadata, validates data flow).
+- **Finding:** Subprocess-based integration is more robust than in-process Ray import — avoids dependency conflicts and crashes. JSONL file handoff is the natural boundary between orchestration and training planes.
+- **Simulation mode:** When Ray is not installed, `_simulate_training()` validates the full data flow (export, checkpoint creation, metadata writing) without actual GPU training. Returns decreasing fake loss (1/step_count).
+- **Config:** `TRAINER_BACKEND=openrlhf` env var. `src/services/training.py` updated with `_create_trainer()` factory.
+
+#### 8.3 OpenClaw-RL OPD Mode (`src/opd/hint_extractor.py`)
+
+- **Design:** `HintExtractor` now supports `opd_mode` parameter ("lightweight" or "openclaw"). Lightweight mode (default): our LLM-based hint extraction, works with any backend. OpenClaw mode: uses `openai.AsyncOpenAI` with `logprobs=True` on vLLM backend to extract per-token log probabilities.
+- **Finding:** OpenAI completions API with `logprobs=True, top_logprobs=1` returns per-token logprobs in `response.choices[0].logprobs.content[i].logprob`. Works with vLLM but not Ollama (Ollama doesn't support logprobs in chat completions).
+- **Fallback:** OpenClaw mode gracefully falls back to empty logprobs if `openai` package not installed or backend doesn't support logprobs.
+- **Config:** `OPD_MODE=openclaw` env var.
+
+#### 8.4 Docker Compose Updates
+
+- **New:** Commented-out `openrlhf-trainer` service showing GPU configuration (nvidia driver, resource reservations). Serves as documentation for production GPU deployment.
+- **Change:** Training service now has `META_RL_ENABLED=true` by default.
+- **Unchanged:** 6 active services (NATS, Ollama, OpenClaw, Bridge, Intercept Proxy, Training).
+
+#### 8.5 OpenRLHF Optional Dependencies
+
+- **Change:** `[openrlhf]` extra expanded to include `ray>=2.9` and `deepspeed>=0.14` alongside `openrlhf[vllm]>=0.9.0`.
+- **Finding:** Explicit Ray and DeepSpeed pins prevent version conflicts with OpenRLHF's own dependency resolution.
+
+### Novel vs Adopted Components (Architecture Insight)
+
+| Contribution | Status | Rationale |
+|---|---|---|
+| Manager Meta-RL | **Novel — keep** | No other framework trains the evaluator |
+| Combined Scorer | **Novel — keep** | Environment-aware multi-dimensional scoring |
+| Per-Worker Adapter Registry | **Novel — keep** | Targeted LoRA specialization per worker |
+| Multi-Environment Workers | **Novel — keep** | Terminal/SWE/GUI with distinct scoring |
+| GRPO math | **Adopt OpenRLHF** | GPU-optimized, battle-tested |
+| OPD at scale | **Adopt OpenClaw-RL** | Per-token logprobs at GPU speed |
+| Distributed training | **Adopt DeepSpeed/FSDP** | Industry standard |
+| NATS orchestration | **Keep** | Correctly placed for control plane |
+
+### Files
+
+| Action | Path |
+|--------|------|
+| CREATE | `src/cli.py` — CLI entry point (init/train/serve/status) |
+| CREATE | `src/training/openrlhf_backend.py` — OpenRLHF Trainer protocol adapter |
+| MODIFY | `src/opd/hint_extractor.py` — dual OPD modes (lightweight + openclaw) |
+| MODIFY | `src/config.py` — `opd_mode` config var |
+| MODIFY | `src/services/training.py` — `_create_trainer()` factory with backend selection |
+| MODIFY | `pyproject.toml` — typer, rich deps; expanded openrlhf extra; project.scripts |
+| MODIFY | `docker-compose.yml` — commented openrlhf-trainer service |
+| MODIFY | `README.md` — two-layer architecture, novel vs adopted, CLI docs |
+| MODIFY | `CLAUDE.md` — Phase 8 status, directory structure, architecture description |
+
+### Deferred to Phase 9
+
+- Trained PRM model (need 10K+ scored trajectories)
+- Full DAPO via OpenRLHF configuration (asymmetric clip done, dynamic sampling remaining)
+- HaluGate as complementary StepScorer in CombinedScorer
+- True per-token OPD advantages in CombinedTrainer
+- Implicit signal extraction from sessions/tool failures
+- Benchmark suite (MATH, HumanEval, GSM8K)

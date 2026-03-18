@@ -113,13 +113,30 @@ tests/
 ├── training/
 │   ├── test_bridge.py        # RolloutBuffer unit tests
 │   ├── test_grpo.py          # GRPO advantage math + torch loss/KL tests
-│   └── test_trainer.py       # MockTrainer + GRPOTrainer protocol/integration tests
+│   ├── test_trainer.py       # MockTrainer + GRPOTrainer protocol/integration tests
+│   ├── test_combined_trainer.py  # CombinedTrainer RL+OPD tests
+│   └── test_meta_trainer.py      # ManagerMetaTrainer tests
+├── inference/
+│   ├── test_client.py         # InferenceClient protocol + adapter tests (mocked)
+│   ├── test_vllm_lora.py      # VLLMLoRAManager tests (mocked httpx)
+│   └── test_adapter_registry.py  # PerWorkerAdapterRegistry tests
+├── rewards/
+│   ├── test_scorer.py         # LLMJudgeScorer tests (mocked InferenceClient)
+│   ├── test_prm_evaluator.py  # PRMEvaluator tests (mocked scorer)
+│   └── test_combined_scorer.py  # CombinedScorer per-environment weight tests
+├── opd/
+│   ├── test_hint_extractor.py   # HintExtractor tests (mocked client + bus)
+│   └── test_rollout_builder.py  # CombinedRolloutBuilder join + timeout tests
+├── intercept/
+│   └── test_proxy.py          # Intercept proxy tests (mocked backend, requires fastapi)
 ├── workers/
-│   └── test_model_reload.py  # Worker model update subscription + reload tests
+│   ├── test_model_reload.py   # Worker model update subscription + reload tests
+│   └── test_multi_env.py      # Terminal/SWE/GUI worker tests + target_worker_id filtering
 └── test_integration.py # Full manager→worker→PRM→rollout loop (requires NATS)
-docker-compose.yml     # 5 services: NATS, Ollama, OpenClaw, Bridge, Training
+docker-compose.yml     # 6 services: NATS, Ollama, OpenClaw, Bridge, Intercept Proxy, Training
 Dockerfile             # Python 3.10 base for training service
 Dockerfile.bridge      # Python 3.10 base for bridge service
+Dockerfile.intercept   # Python 3.10 base for intercept proxy
 scripts/
 └── demo.sh            # One-command Docker Compose demo startup
 docs/
