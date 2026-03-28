@@ -33,33 +33,9 @@ The result: managers evaluate agent work step-by-step, scores feed into OpenRLHF
 
 ## Architecture
 
-```
-User --> OpenClaw Web UI (:3000)
-           |
-           v
-+----------------------+    +----------+
-|  OpenClaw Gateway    |    |   NATS   |
-|  (:18789)            |    |  (:4222) |
-|  Manager + Worker    |    |          |
-|  agents              |    |          |
-+----------+-----------+    +----+-----+
-           | exec/curl           |
-     +-----v---------------------v------+
-     |       Bridge Service (:8100)      |
-     |  HTTP API <--> NATS pub/sub       |
-     +------------------+---------------+
-                        | NATS
-          +------+------+------+--------+
-          v      v      v      v        v
-   Intercept  PRM     Training  OPD    Meta-RL
-   Proxy    Evaluator  Loop   Hint    Manager
-   (:8200)  (Combined (GRPO  Extract  Trainer
-     |       Scorer)  +OPD)    or
-     v                         |
-   Ollama                      v
-   (:11434)             Combined Rollout
-                          Builder
-```
+<div align="center">
+<img src="docs/architecture.png" alt="Tentalis Architecture" width="960">
+</div>
 
 **OpenClaw** runs Manager + Worker agents (identity, memory, web UI) --> agents call the **Bridge Service** via HTTP --> Bridge translates to **NATS** pub/sub --> workers call LLMs through the **Intercept Proxy** (logging SessionEvents for OPD) --> **CombinedScorer** scores each reasoning step --> **CombinedTrainer** runs GRPO + OPD distillation --> model improves --> workers hot-swap weights --> **Meta-RL** trains the manager too --> repeat.
 
